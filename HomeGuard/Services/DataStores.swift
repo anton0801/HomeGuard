@@ -78,7 +78,7 @@ class ReminderStore: ObservableObject {
             ("Check Fire Extinguishers","Inspect for pressure and expiry",.yearly,.yearly,60),
             ("Roof Inspection","Visual check for damage or missing shingles",.yearly,.yearly,45),
             ("Water Meter Reading","Record reading to monitor consumption",.monthly,.monthly,0),
-            ("Drain Cleaning","Clear slow drains before they block", .monthly,.quarterly,20),
+            ("Drain Cleaning","Clear slow drains before they block",.monthly,.quarterly,20),
         ]
         reminders = seeds.map { title, details, cat, rec, offset in
             Reminder(title: title, details: details, category: cat, recurrence: rec,

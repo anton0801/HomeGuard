@@ -1,10 +1,5 @@
 import SwiftUI
 
-#Preview {
-    OnboardingContainerView()
-        .environmentObject(AppStateManager())
-}
-
 struct OnboardingContainerView: View {
     @EnvironmentObject var appState: AppStateManager
     @State private var page = 0

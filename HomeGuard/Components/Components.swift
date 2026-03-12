@@ -230,28 +230,31 @@ struct HeroBackground: View {
     @State private var anim = false
     
     var body: some View {
-        ZStack {
-            HGColor.gradHero.ignoresSafeArea()
-            Circle().fill(color1.opacity(0.08)).frame(width:500).blur(radius:100).offset(x: anim ? 60:30, y: anim ? -220:-200)
-                .animation(.easeInOut(duration:6).repeatForever(autoreverses:true), value:anim)
-            Circle().fill(color2.opacity(0.06)).frame(width:400).blur(radius:80).offset(x: anim ? -80:-50, y: anim ? 260:230)
-                .animation(.easeInOut(duration:8).repeatForever(autoreverses:true), value:anim)
-            // Subtle grid
-            Canvas { ctx, size in
-                let s: CGFloat = 40
-                var y: CGFloat = 0
-                while y < size.height {
-                    var x: CGFloat = 0
-                    while x < size.width {
-                        ctx.stroke(Path { p in p.move(to: CGPoint(x:x,y:0)); p.addLine(to: CGPoint(x:x,y:size.height)) }, with: .color(.white.opacity(0.025)), lineWidth: 0.5)
-                        x += s
+        GeometryReader { geo in
+            ZStack {
+                HGColor.gradHero.ignoresSafeArea()
+                Circle().fill(color1.opacity(0.08)).frame(width:500).blur(radius:100).offset(x: anim ? 60:30, y: anim ? -220:-200)
+                    .animation(.easeInOut(duration:6).repeatForever(autoreverses:true), value:anim)
+                Circle().fill(color2.opacity(0.06)).frame(width:400).blur(radius:80).offset(x: anim ? -80:-50, y: anim ? 260:230)
+                    .animation(.easeInOut(duration:8).repeatForever(autoreverses:true), value:anim)
+                // Subtle grid
+                Canvas { ctx, size in
+                    let s: CGFloat = 40
+                    var y: CGFloat = 0
+                    while y < size.height {
+                        var x: CGFloat = 0
+                        while x < size.width {
+                            ctx.stroke(Path { p in p.move(to: CGPoint(x:x,y:0)); p.addLine(to: CGPoint(x:x,y:size.height)) }, with: .color(.white.opacity(0.025)), lineWidth: 0.5)
+                            x += s
+                        }
+                        ctx.stroke(Path { p in p.move(to: CGPoint(x:0,y:y)); p.addLine(to: CGPoint(x:size.width,y:y)) }, with: .color(.white.opacity(0.025)), lineWidth: 0.5)
+                        y += s
                     }
-                    ctx.stroke(Path { p in p.move(to: CGPoint(x:0,y:y)); p.addLine(to: CGPoint(x:size.width,y:y)) }, with: .color(.white.opacity(0.025)), lineWidth: 0.5)
-                    y += s
-                }
-            }.ignoresSafeArea()
+                }.ignoresSafeArea()
+            }
+            .onAppear { anim = true }
+            .frame(width: geo.size.width)
         }
-        .onAppear { anim = true }
     }
 }
 

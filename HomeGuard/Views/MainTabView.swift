@@ -14,7 +14,8 @@ struct MainTabView: View {
                 case 0: MyHomeView().transition(.opacity)
                 case 1: RemindersView().transition(.opacity)
                 case 2: JournalView().transition(.opacity)
-                case 3: ProfileView().transition(.opacity)
+                case 3: AnalyticsView().transition(.opacity)
+                case 4: ProfileView().transition(.opacity)
                 default: MyHomeView()
                 }
             }
@@ -27,6 +28,7 @@ struct MainTabView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .onAppear {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.badge,.sound]) { _,_ in }
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3)) {
                 appeared = true
             }
@@ -43,6 +45,7 @@ struct CustomTabBar: View {
         ("house.fill", "Home"),
         ("bell.fill", "Reminders"),
         ("book.closed.fill", "Journal"),
+        ("chart.bar.fill", "Analytics"),
         ("person.circle.fill", "Profile")
     ]
     

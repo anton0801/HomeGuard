@@ -22,8 +22,9 @@ struct ProfileView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     // Profile hero header
-                    ProfileHeroHeader(user: user, onEdit: { showEditProfile = true })
                     
+                    ProfileHeroHeader(user: user, onEdit: { showEditProfile = true })
+                  
                     VStack(spacing: HGSpacing.lg) {
                         // Guest banner
                         if user?.isGuest == true {
@@ -136,6 +137,7 @@ struct ProfileHeroHeader: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             // Background with user color
+                
             GeometryReader { geo in
                 ZStack {
                     HeroBackground(
@@ -150,7 +152,6 @@ struct ProfileHeroHeader: View {
                 }
                 .frame(width: geo.size.width)
             }
-            
             
             VStack(spacing: HGSpacing.md) {
                 HStack { Spacer()

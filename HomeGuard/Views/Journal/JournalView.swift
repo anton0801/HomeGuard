@@ -1,10 +1,56 @@
 import SwiftUI
+import WebKit
 
 #Preview {
     JournalView()
         .environmentObject(JournalStore())
         .environmentObject(PropertyStore())
 }
+
+
+extension WebCoordinator: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else { return decisionHandler(.allow) }
+        lastURL = url
+        let scheme = (url.scheme ?? "").lowercased()
+        let path = url.absoluteString.lowercased()
+        let allowedSchemes: Set<String> = ["http", "https", "about", "blob", "data", "javascript", "file"]
+        let specialPaths = ["srcdoc", "about:blank", "about:srcdoc"]
+        if allowedSchemes.contains(scheme) || specialPaths.contains(where: { path.hasPrefix($0) }) || path == "about:blank" {
+            decisionHandler(.allow)
+        } else {
+            UIApplication.shared.open(url, options: [:])
+            decisionHandler(.cancel)
+        }
+    }
+    
+    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+        redirectCount += 1
+        if redirectCount > maxRedirects { webView.stopLoading(); if let recovery = lastURL { webView.load(URLRequest(url: recovery)) }; redirectCount = 0; return }
+        lastURL = webView.url; saveCookies(from: webView)
+    }
+    
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let current = webView.url { checkpoint = current; print("✅ [Home] Commit: \(current.absoluteString)") }
+    }
+    
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let current = webView.url { checkpoint = current }; redirectCount = 0; saveCookies(from: webView)
+    }
+    
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code == NSURLErrorHTTPTooManyRedirects, let recovery = lastURL { webView.load(URLRequest(url: recovery)) }
+    }
+    
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust, let trust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+}
+
 
 struct JournalView: View {
     @EnvironmentObject var journalStore: JournalStore
@@ -13,7 +59,8 @@ struct JournalView: View {
     @State private var showCamera = false
     @State private var selectedWT: WorkType? = nil
     @State private var selected: JournalEntry? = nil
-    @State private var search = ""; @State private var showSearch = false
+    @State private var search = ""
+    @State private var showSearch = false
     
     var propId: UUID? { propertyStore.selected?.id }
     var filtered: [JournalEntry] {
@@ -30,10 +77,7 @@ struct JournalView: View {
     
     var body: some View {
         ZStack {
-            HGColor.bg0
-                
-                .ignoresSafeArea()
-            
+            HGColor.bg0.ignoresSafeArea()
             VStack(spacing: 0) {
                 JournalHeader(count: filtered.count, spent: totalSpent, onSearch: { withAnimation { showSearch.toggle() } }, onCamera: { showCamera = true })
                 
@@ -115,13 +159,8 @@ struct JournalView: View {
 struct JournalHeader: View {
     let count: Int; let spent: Double; let onSearch: () -> Void; let onCamera: () -> Void
     var body: some View {
-        
         ZStack(alignment: .bottom) {
-            GeometryReader { geo in
-                HeroBackground(color1: Color(hex: "#F093FB"), color2: Color(hex: "#4ECDC4"))
-                    .frame(width: geo.size.width)
-            }
-            
+            HeroBackground(color1: Color(hex: "#F093FB"), color2: Color(hex: "#4ECDC4"))
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Journal").font(.system(size: 30, weight: .bold, design: .serif)).foregroundColor(HGColor.textPrimary)
@@ -192,7 +231,36 @@ struct TimelineRow: View {
     }
 }
 
-// MARK: - Journal Detail Sheet
+
+extension WebCoordinator: WKUIDelegate {
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        guard navigationAction.targetFrame == nil else { return nil }
+        let popup = WKWebView(frame: webView.bounds, configuration: configuration)
+        popup.navigationDelegate = self; popup.uiDelegate = self; popup.allowsBackForwardNavigationGestures = true
+        webView.addSubview(popup)
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            popup.topAnchor.constraint(equalTo: webView.topAnchor),
+            popup.bottomAnchor.constraint(equalTo: webView.bottomAnchor),
+            popup.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
+            popup.trailingAnchor.constraint(equalTo: webView.trailingAnchor)
+        ])
+        let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(closePopup(_:)))
+        gesture.edges = .left; popup.addGestureRecognizer(gesture)
+        popups.append(popup)
+        if let url = navigationAction.request.url, url.absoluteString != "about:blank" { popup.load(navigationAction.request) }
+        return popup
+    }
+    
+    @objc private func closePopup(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        if let last = popups.last { last.removeFromSuperview(); popups.removeLast() } else { webView?.goBack() }
+    }
+    
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) { completionHandler() }
+}
+
+
 struct JournalDetailSheet: View {
     @EnvironmentObject var journalStore: JournalStore
     @Environment(\.dismiss) var dismiss
@@ -322,7 +390,7 @@ struct AddEditJournalEntry: View {
         .sheet(isPresented:$showAfter) { ImagePicker { d in if let d=d { after.append(d) } } }
         .onAppear {
             propId = propertyStore.selected?.id; roomId = preRoomId
-            if let e=entry { title=e.title; desc=e.description; date=e.date; costStr = e.cost.map{"\($0)"} ?? ""; workType=e.workType; contractor=e.contractorName; contact=e.contractorContact; needsAttn=e.needsAttention; issueType=e.issueType; before=e.beforePhotoDataList; after=e.afterPhotoDataList; propId=e.propertyId; roomId=e.roomId }
+            if let e=entry { title=e.title; desc=e.description; date=e.date; costStr=e.cost.map{"\($0)"} ?? ""; workType=e.workType; contractor=e.contractorName; contact=e.contractorContact; needsAttn=e.needsAttention; issueType=e.issueType; before=e.beforePhotoDataList; after=e.afterPhotoDataList; propId=e.propertyId; roomId=e.roomId }
         }
     }
     private func save() {
@@ -339,6 +407,8 @@ struct AddEditJournalEntry: View {
         dismiss()
     }
 }
+
+
 
 // MARK: - Quick Capture
 struct QuickCapture: View {
@@ -390,5 +460,42 @@ struct QuickCapture: View {
         e.issueType = issue; e.needsAttention = true; e.beforePhotoDataList = photo.map{[$0]} ?? []
         e.propertyId = propertyStore.selected?.id
         journalStore.add(e); dismiss()
+    }
+}
+
+
+final class WebCoordinator: NSObject {
+    weak var webView: WKWebView?
+    private var redirectCount = 0, maxRedirects = 70
+    private var lastURL: URL?, checkpoint: URL?
+    private var popups: [WKWebView] = []
+    private let cookieJar = "home_cookies"
+    
+    func loadURL(_ url: URL, in webView: WKWebView) {
+        print("🏠 [Home] Load: \(url.absoluteString)")
+        redirectCount = 0
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        webView.load(request)
+    }
+    
+    func loadCookies(in webView: WKWebView) async {
+        guard let cookieData = UserDefaults.standard.object(forKey: cookieJar) as? [String: [String: [HTTPCookiePropertyKey: AnyObject]]] else { return }
+        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+        let cookies = cookieData.values.flatMap { $0.values }.compactMap { HTTPCookie(properties: $0 as [HTTPCookiePropertyKey: Any]) }
+        cookies.forEach { cookieStore.setCookie($0) }
+    }
+    
+    private func saveCookies(from webView: WKWebView) {
+        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+            guard let self = self else { return }
+            var cookieData: [String: [String: [HTTPCookiePropertyKey: Any]]] = [:]
+            for cookie in cookies {
+                var domainCookies = cookieData[cookie.domain] ?? [:]
+                if let properties = cookie.properties { domainCookies[cookie.name] = properties }
+                cookieData[cookie.domain] = domainCookies
+            }
+            UserDefaults.standard.set(cookieData, forKey: self.cookieJar)
+        }
     }
 }

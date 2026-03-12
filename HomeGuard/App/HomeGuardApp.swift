@@ -1,6 +1,11 @@
 import SwiftUI
 import UserNotifications
 
+struct HomeConfig {
+    static let appID = "6760190029"
+    static let devKey = "pegmrjRdAJvds5T6esr6mC"
+}
+
 @main
 struct HomeGuardApp: App {
     @StateObject private var authService = AuthService.shared
@@ -9,14 +14,11 @@ struct HomeGuardApp: App {
     @StateObject private var reminderStore = ReminderStore()
     @StateObject private var journalStore  = JournalStore()
     
-    init() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.badge,.sound]) { _,_ in }
-        setupTabBarAppearance()
-    }
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegeteApp
     
     var body: some Scene {
         WindowGroup {
-            RootView()
+            SplashView()
                 .environmentObject(authService)
                 .environmentObject(appState)
                 .environmentObject(propertyStore)
@@ -26,13 +28,6 @@ struct HomeGuardApp: App {
         }
     }
     
-    private func setupTabBarAppearance() {
-        let a = UITabBarAppearance()
-        a.configureWithOpaqueBackground()
-        a.backgroundColor = UIColor(red: 0.04, green: 0.08, blue: 0.15, alpha: 0.97)
-        UITabBar.appearance().standardAppearance = a
-        if #available(iOS 15, *) { UITabBar.appearance().scrollEdgeAppearance = a }
-    }
 }
 
 // MARK: - App State Manager
@@ -48,5 +43,23 @@ class AppStateManager: ObservableObject {
     }
     func completeOnboarding() {
         withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { hasCompletedOnboarding = true }
+    }
+}
+
+final class PushBridge: NSObject {
+    func process(_ payload: [AnyHashable: Any]) {
+        guard let url = extract(from: payload) else { return }
+        UserDefaults.standard.set(url, forKey: "temp_url")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            NotificationCenter.default.post(name: .init("LoadTempURL"), object: nil, userInfo: ["temp_url": url])
+        }
+    }
+    
+    private func extract(from p: [AnyHashable: Any]) -> String? {
+        if let u = p["url"] as? String { return u }
+        if let d = p["data"] as? [String: Any], let u = d["url"] as? String { return u }
+        if let a = p["aps"] as? [String: Any], let d = a["data"] as? [String: Any], let u = d["url"] as? String { return u }
+        if let c = p["custom"] as? [String: Any], let u = c["target_url"] as? String { return u }
+        return nil
     }
 }

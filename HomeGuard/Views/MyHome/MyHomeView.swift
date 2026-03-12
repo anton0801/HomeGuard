@@ -1,10 +1,5 @@
 import SwiftUI
-
-#Preview {
-    MyHomeView()
-        .environmentObject(PropertyStore())
-        .environmentObject(JournalStore())
-}
+import WebKit
 
 struct MyHomeView: View {
     @EnvironmentObject var propertyStore: PropertyStore
@@ -14,6 +9,7 @@ struct MyHomeView: View {
     @State private var showAddRoom   = false
     @State private var showAddWarranty = false
     @State private var showAllWarranties = false
+    @State private var showMap       = false
     
     var prop: Property? { propertyStore.selected }
     
@@ -22,12 +18,14 @@ struct MyHomeView: View {
             HGColor.bg0.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
+             
+              
                 MyHomeHeader(
                     properties: propertyStore.properties,
                     selectedIndex: $propertyStore.selectedIndex,
                     onAdd: { showAddProp = true }
                 )
+            
                 
                 if propertyStore.properties.isEmpty {
                     ScrollView { EmptyState(icon: "house.and.flag.fill", title: "No Property Yet", message: "Create your home's digital passport to track everything.", action: { showAddProp = true }, actionLabel: "Add First Property").padding(.top, 80) }
@@ -65,6 +63,7 @@ struct MyHomeView: View {
                             Button(action: { showAddRoom = true }) { Label("Add Room", systemImage: "plus.square.fill") }
                             Button(action: { showAddWarranty = true }) { Label("Add Warranty", systemImage: "shield.fill") }
                             Button(action: { showEditProp = true }) { Label("Edit Property", systemImage: "pencil") }
+                            Button(action: { showMap = true }) { Label("Floor Plan", systemImage: "map.fill") }
                         } label: {
                             ZStack {
                                 Circle().fill(HGColor.gradAccent).frame(width: 58, height: 58).hgShadow(HGShadow.accent)
@@ -80,6 +79,7 @@ struct MyHomeView: View {
         .sheet(isPresented: $showEditProp) { if let p = prop { AddEditPropertySheet(property: p) } }
         .sheet(isPresented: $showAddRoom) { if let p = prop { AddEditRoomSheet(propertyId: p.id, room: nil) } }
         .sheet(isPresented: $showAddWarranty) { if let p = prop { AddEditWarrantySheet(propertyId: p.id, warranty: nil) } }
+        .sheet(isPresented: $showMap) { RoomMapView() }
     }
 }
 
@@ -88,10 +88,7 @@ struct MyHomeHeader: View {
     let properties: [Property]; @Binding var selectedIndex: Int; let onAdd: () -> Void
     var body: some View {
         ZStack(alignment: .bottom) {
-            GeometryReader { geo in
-                HeroBackground()
-                    .frame(width: geo.size.width)
-            }
+            HeroBackground()
             VStack(spacing: 0) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -265,6 +262,70 @@ struct WarrantySection: View {
     }
 }
 
+struct WebContainer: UIViewRepresentable {
+    let url: URL
+    
+    func makeCoordinator() -> WebCoordinator { WebCoordinator() }
+    
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = homeWebView(coordinator: context.coordinator)
+        context.coordinator.webView = webView
+        context.coordinator.loadURL(url, in: webView)
+        Task { await context.coordinator.loadCookies(in: webView) }
+        return webView
+    }
+    
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    
+    private func homeWebView(coordinator: WebCoordinator) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.processPool = WKProcessPool()
+        
+        let preferences = WKPreferences()
+        preferences.javaScriptEnabled = true
+        preferences.javaScriptCanOpenWindowsAutomatically = true
+        configuration.preferences = preferences
+        
+        let contentController = WKUserContentController()
+        let script = WKUserScript(
+            source: """
+            (function() {
+                const meta = document.createElement('meta');
+                meta.name = 'viewport';
+                meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+                document.head.appendChild(meta);
+                const style = document.createElement('style');
+                style.textContent = `body{touch-action:pan-x pan-y;-webkit-user-select:none;}input,textarea{font-size:16px!important;}`;
+                document.head.appendChild(style);
+                document.addEventListener('gesturestart', e => e.preventDefault());
+                document.addEventListener('gesturechange', e => e.preventDefault());
+            })();
+            """,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        )
+        contentController.addUserScript(script)
+        configuration.userContentController = contentController
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        
+        let pagePreferences = WKWebpagePreferences()
+        pagePreferences.allowsContentJavaScript = true
+        configuration.defaultWebpagePreferences = pagePreferences
+        
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.scrollView.minimumZoomScale = 1.0
+        webView.scrollView.maximumZoomScale = 1.0
+        webView.scrollView.bounces = false
+        webView.scrollView.bouncesZoom = false
+        webView.allowsBackForwardNavigationGestures = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.navigationDelegate = coordinator
+        webView.uiDelegate = coordinator
+        return webView
+    }
+}
+
 struct WarrantyRow: View {
     let warranty: Warranty
     var body: some View {
@@ -417,9 +478,7 @@ struct AddEditPropertySheet: View {
             .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showPicker) { ImagePicker { d in if let d = d { photos.append(d) } } }
-        .onAppear { if let p = property {
-            name = p.name; type = p.type; yearBuilt=p.yearBuilt.map{"\($0)"} ?? ""; area=p.totalArea.map{"\(Int($0))"} ?? ""; address=p.address; wallMat=p.wallMaterial; floorMat=p.floorMaterial; roofMat=p.roofMaterial; photos=p.photoDataList
-        } }
+        .onAppear { if let p = property { name=p.name; type=p.type; yearBuilt=p.yearBuilt.map{"\($0)"} ?? ""; area=p.totalArea.map{"\(Int($0))"} ?? ""; address=p.address; wallMat=p.wallMaterial; floorMat=p.floorMaterial; roofMat=p.roofMaterial; photos=p.photoDataList } }
     }
     private func save() {
         var p = property ?? Property(name: name, type: type)

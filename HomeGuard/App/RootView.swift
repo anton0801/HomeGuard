@@ -4,6 +4,10 @@ struct RootView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppStateManager
     
+    init() {
+        setupTabBarAppearance()
+    }
+    
     var body: some View {
         ZStack {
             HGColor.bg0.ignoresSafeArea()
@@ -11,8 +15,7 @@ struct RootView: View {
             Group {
                 switch authService.authState {
                 case .unknown:
-                    SplashView()
-                        .transition(.opacity)
+                    ProgressView()
                         
                 case .unauthenticated:
                     if !appState.hasCompletedOnboarding {
@@ -27,10 +30,7 @@ struct RootView: View {
                     }
                     
                 case .authenticated:
-                    if appState.showingSplash {
-                        SplashView()
-                            .transition(.opacity)
-                    } else if !appState.hasCompletedOnboarding {
+                    if !appState.hasCompletedOnboarding {
                         OnboardingContainerView()
                             .transition(.opacity)
                     } else {
@@ -42,6 +42,14 @@ struct RootView: View {
             .animation(.easeInOut(duration: 0.5), value: authService.authState.rawValue)
             .animation(.easeInOut(duration: 0.4), value: appState.showingSplash)
         }
+    }
+    
+    private func setupTabBarAppearance() {
+        let a = UITabBarAppearance()
+        a.configureWithOpaqueBackground()
+        a.backgroundColor = UIColor(red: 0.04, green: 0.08, blue: 0.15, alpha: 0.97)
+        UITabBar.appearance().standardAppearance = a
+        if #available(iOS 15, *) { UITabBar.appearance().scrollEdgeAppearance = a }
     }
 }
 

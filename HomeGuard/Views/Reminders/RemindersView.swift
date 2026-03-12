@@ -19,6 +19,7 @@ struct RemindersView: View {
             HGColor.bg0.ignoresSafeArea()
             
             VStack(spacing: 0) {
+                
                 RemindersHeader(overdueCount: reminderStore.overdueCount)
                 
                 // Category filter
@@ -93,10 +94,7 @@ struct RemindersHeader: View {
     let overdueCount: Int
     var body: some View {
         ZStack(alignment: .bottom) {
-            GeometryReader { geo in
-                HeroBackground(color1: overdueCount > 0 ? HGColor.danger : HGColor.accent, color2: Color(hex: "#4ECDC4"))
-                    .frame(width: geo.size.width)
-            }
+            HeroBackground(color1: overdueCount > 0 ? HGColor.danger : HGColor.accent, color2: Color(hex: "#4ECDC4"))
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Reminders").font(.system(size: 30, weight: .bold, design: .serif)).foregroundColor(HGColor.textPrimary)

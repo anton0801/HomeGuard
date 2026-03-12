@@ -47,6 +47,103 @@ struct Room: Identifiable, Codable {
     var lastChecked: Date?
     var photoDataList: [Data] = []
 }
+struct AppState: Equatable {
+    var phase: Phase
+    var config: Config
+    var ui: UIFlags
+    
+    enum Phase: Equatable {
+        case idle
+        case loading
+        case validating
+        case validated
+        case processing
+        case ready(String)
+        case failed
+        case offline
+    }
+    
+    struct Config: Equatable {
+        var mode: String?
+        var firstLaunch: Bool
+        var tracking: TrackingData
+        var navigation: NavigationData
+        var permissions: PermissionData
+        
+        struct TrackingData: Equatable {
+            let data: [String: String]
+            
+            var isEmpty: Bool { data.isEmpty }
+            var isOrganic: Bool { data["af_status"] == "Organic" }
+            
+            static var empty: TrackingData {
+                TrackingData(data: [:])
+            }
+        }
+        
+        struct NavigationData: Equatable {
+            let data: [String: String]
+            
+            var isEmpty: Bool { data.isEmpty }
+            
+            static var empty: NavigationData {
+                NavigationData(data: [:])
+            }
+        }
+        
+        struct PermissionData: Equatable {
+            var approved: Bool
+            var declined: Bool
+            var lastAsked: Date?
+            
+            var canAsk: Bool {
+                guard !approved && !declined else { return false }
+                if let date = lastAsked {
+                    return Date().timeIntervalSince(date) / 86400 >= 3
+                }
+                return true
+            }
+            
+            static var initial: PermissionData {
+                PermissionData(approved: false, declined: false, lastAsked: nil)
+            }
+        }
+        
+        static var initial: Config {
+            Config(
+                mode: nil,
+                firstLaunch: true,
+                tracking: .empty,
+                navigation: .empty,
+                permissions: .initial
+            )
+        }
+    }
+    
+    struct UIFlags: Equatable {
+        var showPermissionPrompt: Bool
+        var showOfflineView: Bool
+        var navigateToMain: Bool
+        var navigateToWeb: Bool
+        
+        static var initial: UIFlags {
+            UIFlags(
+                showPermissionPrompt: false,
+                showOfflineView: false,
+                navigateToMain: false,
+                navigateToWeb: false
+            )
+        }
+    }
+    
+    static var initial: AppState {
+        AppState(
+            phase: .idle,
+            config: .initial,
+            ui: .initial
+        )
+    }
+}
 
 enum RoomType: String, Codable, CaseIterable {
     case livingRoom="Living Room"; case bedroom="Bedroom"; case kitchen="Kitchen"
@@ -87,6 +184,19 @@ struct Warranty: Identifiable, Codable {
     var status: WarrantyStatus {
         let d = daysUntilExpiry
         if d < 0 { return .expired }; if d <= 30 { return .expiringSoon }; return .active
+    }
+}
+struct LoadedConfig {
+    var mode: String?
+    var isFirstLaunch: Bool
+    var tracking: [String: String]
+    var navigation: [String: String]
+    var permissions: PermissionData
+    
+    struct PermissionData {
+        var approved: Bool
+        var declined: Bool
+        var lastAsked: Date?
     }
 }
 enum WarrantyStatus {
@@ -197,6 +307,62 @@ enum WorkType: String, Codable, CaseIterable {
         LinearGradient(colors: [color, color.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
+enum AppAction {
+    // Lifecycle
+    case initialize
+    case timeout
+    
+    // Configuration
+    case configLoaded(ConfigData)
+    
+    // Data received
+    case trackingReceived([String: Any])
+    case navigationReceived([String: Any])
+    
+    // Network
+    case networkOnline
+    case networkOffline
+    
+    // Validation
+    case validationStarted
+    case validationSucceeded
+    case validationFailed
+    
+    // Attribution fetch (organic flow)
+    case fetchAttributionStarted
+    case fetchAttributionSucceeded([String: Any])
+    case fetchAttributionFailed
+    
+    // Endpoint fetch
+    case fetchEndpointStarted
+    case fetchEndpointSucceeded(String)
+    case fetchEndpointFailed
+    
+    // Permissions
+    case permissionRequested
+    case permissionGranted
+    case permissionDenied
+    case permissionDeferred
+    
+    // Navigation
+    case navigateToMain
+    case navigateToWeb
+    
+    struct ConfigData {
+        var mode: String?
+        var firstLaunch: Bool
+        var tracking: [String: String]
+        var navigation: [String: String]
+        var permissions: PermissionData
+        
+        struct PermissionData {
+            var approved: Bool
+            var declined: Bool
+            var lastAsked: Date?
+        }
+    }
+}
+
 enum IssueType: String, Codable, CaseIterable {
     case crack="Crack"; case leak="Leak"; case mold="Mold"; case dampness="Dampness"
     case electrical="Electrical"; case pest="Pest"; case structural="Structural"; case other="Other"
